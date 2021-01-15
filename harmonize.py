@@ -4,9 +4,10 @@
 ########## Harmonize Project ###########
 ##########        by         ###########
 ########## MCP Capital, LLC  ###########
+##########       DAF         ###########
 ########################################
 # Github.com/MCPCapital/harmonizeproject
-# Script Last Updated - Release 1.1.4
+# Script Last Updated - Release 1.1.5
 ########################################
 ### -v to enable verbose messages     ##
 ### -g #  to pre-select a group number##
@@ -25,11 +26,22 @@ import threading
 import fileinput
 import numpy as np
 import cv2
+#DAF
+import os.path
+from os import path
+from datetime import datetime
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-v","--verbose", dest="verbose", action="store_true")
 parser.add_argument("-g","--groupid", dest="groupid")
 commandlineargs = parser.parse_args()
+
+
+global baseurl
+global light_locations
+global groupid
+global clientdata
 
 def eprint(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
@@ -43,19 +55,39 @@ def verbose(*args, **kwargs):
 def findhue():  #Auto-find bridges on network & get list
     r = requests.get("https://discovery.meethue.com/")
     bridgelist = json.loads(r.text)
+
+
+    if path.exists('BridgeSetup.txt'): #DAF this will load the last saved bridge from a file
+        f = open("BridgeSetup.txt", "r")
+        BridgeID=f.read()
+        f.close()
+        verbose("last used bridge ", BridgeID)
+		
     i = 0
     for b in bridgelist:
+        if path.exists('BridgeSetup.txt'): # DAF only make the comparison if the file is pressent
+            if bridgelist[i]['id']==BridgeID:
+               bridge = i
+               verbose("found bridge no ", str(i), " ", bridgelist[i]['internalipaddress'])
         i += 1
-    
-    if len(bridgelist)>1:
+
+    if len(bridgelist)>1 and not(path.exists('BridgeSetup.txt')):
         print("Multiple bridges found. Select one of the bridges below (", list(bridgelist),")")
-        bridge = int(input())   
-    else: 
+        bridge = int(input())	
+    elif bridge < 1 :  
         bridge = 0 #Default to the only bridge if only one is found
      
     hueip = bridgelist[bridge]['internalipaddress'] #Logic currently assumes 1 bridge on the network
     print("I will use the bridge at ", hueip)
+	
+	# [DAF] save the bridge that is used to reuse the same setup next time the program is started.
+    if not(path.exists('BridgeSetup.txt')): #DAF this only create the file if it's not already there
+        hueid = bridgelist[bridge]['id']
+        f= open("BridgeSetup.txt","w+") 
+        f.write(str(hueid))
+        f.close()
     
+	
     msg = \
         'M-SEARCH * HTTP/1.1\r\n' \
         'HOST:' + hueip +':1900\r\n' \
@@ -88,6 +120,7 @@ def findhue():  #Auto-find bridges on network & get list
 (hueip,port),headers = findhue() or ((None,None),None)
 if hueip is None:
     sys.exit("Hue bridge not found. Mission failed, better luck next time")
+
 verbose("I found the Bridge on", hueip)
 
 
@@ -125,7 +158,6 @@ if Path("./client.json").is_file():
     clientdata = json.loads(jsonstr)
     f.close()
     verbose("Client Data Found)")
-    global baseurl
     baseurl = "http://{}/api".format(hueip)
     setupurl = baseurl + "/" + clientdata['username']
     r = requests.get(url = setupurl)
@@ -147,51 +179,58 @@ if jsondata["apiversion"]<"1.22":
 verbose("Api version is good to go. You've got version {}...".format(jsondata["apiversion"]))
 
 ######### We're connected! - Now lets find entertainment areas in the list of groups ##########
-r = requests.get(url = baseurl+"/{}/groups".format(clientdata['username']))
-jsondata = r.json()
-groups = dict()
-groupid = commandlineargs.groupid
-
-if groupid is not None:
-    verbose("Checking for entertainment group {}".format(groupid))
-else:
-    verbose("Checking for entertainment groups (not none)")
-
-for k in jsondata:  #These 3 sections isolate Entertainment areas from normal groups (like rooms)
-    if jsondata[k]["type"]=="Entertainment":
-        if groupid is None or k==groupid:
-            groups[k] = jsondata[k]
-
-if len(groups)==0: #No groups or null = exit
-    if groupid is not None:
-        sys.exit("Entertainment group not found, set one up in the Hue App according to the instructions on github.")
-    else:
-        sys.exit("Entertainment group not found, set one up in the Hue App according to the instructions on github.")
-
-if len(groups)>1:
-    eprint("Multiple entertainment groups found (", groups,") specify which with --groupid")
-    for g in groups:
-        eprint("{} = {}".format(g,groups[g]["name"]))
-    groupid = input()
-    print("You selected groupid ", groupid)
-    #sys.exit()
-
-if groupid is None:
-    groupid=next(iter(groups))
-verbose("Using groupid={}".format(groupid))
-
-#### Lets get the lights & their locations in our selected group and enable streaming ######
-for l in jsondata:
-    r = requests.get(url = baseurl+"/{}/groups/{}".format(clientdata['username'],groupid))
+def ini_Light_group_Entertaintment():
+    global groupid
+    global clientdata
+    global light_locations
+    
+    r = requests.get(url = baseurl+"/{}/groups".format(clientdata['username']))
     jsondata = r.json()
-    light_locations = dict()
-    light_locations = jsondata['locations']
-verbose("These are the lights and locations found: \n", light_locations)
+    groups = dict()
+    groupid = commandlineargs.groupid
+
+    if groupid is not None:
+        verbose("Checking for entertainment group {}".format(groupid))
+    else:
+        verbose("Checking for entertainment groups (not none)")
+
+    for k in jsondata:  #These 3 sections isolate Entertainment areas from normal groups (like rooms)
+        if jsondata[k]["type"]=="Entertainment":
+            if groupid is None or k==groupid:
+                groups[k] = jsondata[k]
+
+    if len(groups)==0: #No groups or null = exit
+        if groupid is not None:
+            sys.exit("Entertainment group not found, set one up in the Hue App according to the instructions on github.")
+        else:
+            sys.exit("Entertainment group not found, set one up in the Hue App according to the instructions on github.")
+
+    if len(groups)>1:
+        eprint("Multiple entertainment groups found (", groups,") specify which with --groupid")
+        for g in groups:
+            eprint("{} = {}".format(g,groups[g]["name"]))
+        groupid = input()
+        print("You selected groupid ", groupid)
+        #sys.exit()
+
+    if groupid is None:
+        groupid=next(iter(groups))
+    verbose("Using groupid={}".format(groupid))
+
+    #### Lets get the lights & their locations in our selected group and enable streaming ######
+
+    for l in jsondata:
+        r = requests.get(url = baseurl+"/{}/groups/{}".format(clientdata['username'],groupid))
+        jsondata = r.json()
+        light_locations = dict()
+        light_locations = jsondata['locations']
+    verbose("These are the lights and locations found: \n", light_locations)
 
 ##### Setting up streaming service and calling the DTLS handshake command ######
-verbose("Enabling streaming on your Entertainment area") #Allows us to send UPD to port 2100
-r = requests.put(url = baseurl+"/{}/groups/{}".format(clientdata['username'],groupid),json={"stream":{"active":True}})
-jsondata = r.json()
+
+    verbose("Enabling streaming on your Entertainment area") #Allows us to send UPD to port 2100
+    r = requests.put(url = baseurl+"/{}/groups/{}".format(clientdata['username'],groupid),json={"stream":{"active":True}})
+    jsondata = r.json()
 ######This is used to execute the command near the bottom of this document to create the DTLS handshake with the bridge on port 2100
 def execute(cmd):
     popen = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)
@@ -211,6 +250,73 @@ def stdin_to_buffer():
         print(line)
         if stopped:
             break
+
+##############################################################
+## get sensor data from "Hue dimmer switch"
+#############################################################
+
+class cstruct:
+    uniqueid = ""
+    name = ""
+    lastupdated = ""
+    
+Switchdata = [cstruct() for i in range(10)] # assumption max 10 dim swiches
+
+def time_obj_Str_conv(str_time):
+    time = str_time.replace("T", " ")
+    return datetime.strptime(time, '%Y-%m-%d %H:%M:%S')
+
+def time_in_seconds(dt):
+    epoch = datetime.utcfromtimestamp(0)
+    delta = dt - epoch
+    return delta.total_seconds()
+
+stopped = False
+
+if path.exists('DimSwich.txt'): #DAF this will load the last saved Swicth from a file
+    f = open("DimSwich.txt", "r")
+    SwichToFind=f.read()
+    f.close()
+    verbose("last used Swich: ", SwichToFind)
+
+
+r = requests.get(setupurl+ "/sensors")
+SensorsData = dict()
+SensorsData = r.json()
+
+i=0
+for k in SensorsData:  #this is to find the start time for last change in the dim swich
+    if "productname" in SensorsData[k]:
+        if "Hue dimmer switch" in SensorsData[k]["productname"]: # here identinfy all the swiches coupled to the bridge
+            Switchdata[i].uniqueid = SensorsData[k]["uniqueid"]
+            Switchdata[i].name = SensorsData[k]["name"]
+            Switchdata[i].lastupdated = SensorsData[k]["state"]["lastupdated"]
+            i += 1
+
+if len(Switchdata)> 0 and not(path.exists('DimSwich.txt')): #only used if the configuration file is not present and more than one choice
+    print("Multiple Swiches found. Select one of the swiches below")
+    k=0
+    for k in range(i):
+        print ("[" ,  k , "]" , " ", Switchdata[k].name)
+    choice = int(input())
+    SwichToFind = Switchdata[choice].name	
+
+elif i < 1 :  
+    SwichToFind = Switchdata[i].name #Default to the only swich found on the bridge if only one is found
+
+if not(path.exists('DimSwich.txt')): 
+    f= open("DimSwich.txt","w+") 
+    f.write(str(SwichToFind))
+    f.close()
+
+print ("will use: ", SwichToFind,)
+
+
+for k in SensorsData:  #this is to find the start time for last change in the dim swich
+    if SwichToFind in SensorsData[k]["name"]:  # this is the last step in identinfy the unit that is supoose to be used futhere on
+        StartLarstUpdated=time_obj_Str_conv(SensorsData[k]["state"]["lastupdated"]) # find the last time the bottom has been used.
+        StartLarstUpdated_s = time_in_seconds(StartLarstUpdated)
+
 ######################################################
 ################# Setup Complete #####################
 ######################################################
@@ -220,6 +326,9 @@ def stdin_to_buffer():
 ######################################################
 
 def averageimage():
+    global light_locations
+    global cords #array of coordinates
+    global bounds #array of bounds for each coord, each item is formatted as [top, bottom, left, right]
 ########## Scales up locations to identify the nearest pixel based on lights' locations #######
     time.sleep(1.2) #wait for video size to be defined
     for x, coords in light_locations.items():
@@ -238,9 +347,6 @@ def averageimage():
     dist = int(breadth*avgsize) #Proportion of the pixels we want to average around in relation to the video size
     verbose('Distance from relative location is: ', dist)
 
-    global cords #array of coordinates
-    global bounds #array of bounds for each coord, each item is formatted as [top, bottom, left, right]
-    
     #initialize the arrays
     cords = {}
     bounds = {}
@@ -285,7 +391,7 @@ def cv2input_to_buffer(): ######### Section opens the device, sets buffer, pulls
     verbose('Video Shape is: ', w, h) #prints video shape
 
 ########## This section loops & pulls re-colored frames and alwyas get the newest frame 
-    cap.set(cv2.CAP_PROP_BUFFERSIZE,0) # No frame buffer to avoid lagging, always grab newest frame
+    cap.set(cv2.CAP_PROP_BUFFERSIZE,1) # - this need to be 1 or highere in order to work[DAF], No frame buffer to avoid lagging, always grab newest frame
     ct = 0 ######ct code grabs every X frame as indicated below
     while not stopped:
         ct += 1
@@ -320,37 +426,57 @@ def buffer_to_light(proc): #Potentially thread this into 2 processes?
 ############### Initialization Area ##################
 ######################################################
 
+def initializeTreads():
+
+    threads = list()
+    verbose("Starting cv2input...")
+    t = threading.Thread(target=cv2input_to_buffer)
+    t.start()
+    threads.append(t)
+    time.sleep(.75)
+    verbose("Starting image averager...")
+    t = threading.Thread(target=averageimage)
+    t.start()
+    threads.append(t)
+    time.sleep(.25) #Initialize and find bridge IP before creating connection
+    verbose("Opening SSL stream to lights...")
+    cmd = ["openssl","s_client","-dtls1_2","-cipher","PSK-AES128-GCM-SHA256","-psk_identity",clientdata['username'],"-psk",clientdata['clientkey'], "-connect", hueip+":2100"]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    t = threading.Thread(target=buffer_to_light, args=(proc,))
+    t.start()
+    threads.append(t)
+
+############
+# ini important functions
+
+ini_Light_group_Entertaintment()
+initializeTreads()
+
 ######### Section executes video input and establishes the connection stream to bridge ##########
-try:
-    try:
-        threads = list()
-        verbose("Starting cv2input...")
-        t = threading.Thread(target=cv2input_to_buffer)
-        t.start()
-        threads.append(t)
-        time.sleep(.75)
-        verbose("Starting image averager...")
-        t = threading.Thread(target=averageimage)
-        t.start()
-        threads.append(t)
-        time.sleep(.25) #Initialize and find bridge IP before creating connection
-        verbose("Opening SSL stream to lights...")
-        cmd = ["openssl","s_client","-dtls1_2","-cipher","PSK-AES128-GCM-SHA256","-psk_identity",clientdata['username'],"-psk",clientdata['clientkey'], "-connect", hueip+":2100"]
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
-        t = threading.Thread(target=buffer_to_light, args=(proc,))
-        t.start()
-        threads.append(t)
-
-        input("Press return to stop") # Allow us to exit easily
-        stopped=True
-        for t in threads:
-            t.join()
-    except Exception as e:
-        print(e)
-        stopped=True
-
-finally: #Turn off streaming to allow normal function immedietly
-    verbose("Disabling streaming on Entertainment area")
-    r = requests.put(url = baseurl+"/{}/groups/{}".format(clientdata['username'],groupid),json={"stream":{"active":False}}) 
-    jsondata = r.json()
-    verbose(jsondata)
+verbose("Now Ready to read the contact continiously")
+while True:
+    time.sleep(.75)
+    r = requests.get(setupurl+ "/sensors")
+    SensorsData = dict()
+    SensorsData = r.json()
+    for k in SensorsData:  #this is to find the 
+        if SwichToFind in SensorsData[k]["name"]:  # this is the last step in identinfy the unit that is supoose to be used futhere on
+            Time_lastUpdate_s =time_in_seconds(time_obj_Str_conv(SensorsData[k]["state"]["lastupdated"]))
+            diff =  Time_lastUpdate_s - StartLarstUpdated_s
+            if 0 < diff: 
+                StartLarstUpdated_s = Time_lastUpdate_s
+                if SensorsData[k]["state"]["buttonevent"] == 4001: #only looking for the turnOff part with a long push
+                    print(SensorsData[k]["state"]["buttonevent"])
+                    stopped = True
+                    verbose("Disabling streaming on Entertainment area")
+                    r = requests.put(url = baseurl+"/{}/groups/{}".format(clientdata['username'],groupid),json={"stream":{"active":False}}) 
+                    jsondata = r.json()
+                    verbose(jsondata)
+                if SensorsData[k]["state"]["buttonevent"] == 2001: #only looking for the Make Brigter part with a long push
+                    print(SensorsData[k]["state"]["buttonevent"])
+                if SensorsData[k]["state"]["buttonevent"] == 1001: #only looking for the turnOn part with a long push
+                    print(SensorsData[k]["state"]["buttonevent"])
+                    stopped = False
+                    ini_Light_group_Entertaintment()
+                    initializeTreads()
+                   
