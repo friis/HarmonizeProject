@@ -75,6 +75,9 @@ sudo ./setup.sh
 **Set a demon up:**
 * recomend to use PM2
 
+** Dim swich support
+* the Dim swich is using long press on 1 or 0 to turn on or off the entertainment area
+
 **Command line arguments:**
 
 * `-v `           Display verbose output
