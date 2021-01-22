@@ -40,12 +40,12 @@ sudo ./setup.sh
 ```
 
 **Hardware Setup:**
-
+* Hue dim switch
 * Connect Video Device (PS4, FireStick, etc.) to the splitter input. 
 * Connect an HDMI cable from the 4k output to the TV; and from Output 2 (downscaled) to the video capture card connected to your device.
 * Ensure your splitter's switches are set to downscale Output 2 to 1080 or 720p!
 ![Connection Diagram](http://harmonizeproject.matthewpilsbury.com/diagram.png)
-* Hue dim switch
+
 
 **Entertainment Area Configuration:**
 
@@ -74,8 +74,6 @@ sudo ./setup.sh
 
 **Set a demon up:**
 * recomend to use PM2
-
-
 
 **Command line arguments:**
 
