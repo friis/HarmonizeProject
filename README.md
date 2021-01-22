@@ -45,6 +45,7 @@ sudo ./setup.sh
 * Connect an HDMI cable from the 4k output to the TV; and from Output 2 (downscaled) to the video capture card connected to your device.
 * Ensure your splitter's switches are set to downscale Output 2 to 1080 or 720p!
 ![Connection Diagram](http://harmonizeproject.matthewpilsbury.com/diagram.png)
+* Hue dim switch
 
 **Entertainment Area Configuration:**
 
@@ -56,8 +57,9 @@ sudo ./setup.sh
 **First-Time Run Instructions:**
 
 * If you have not set up a bridge before, the program will attempt to register you on the bridge. You will have 45 second to push the button on the bridge. *Current Bug* - After registering, the script will store the clientdata but fail & exit. *Workaround* - Simply run the script again since the data was saved.
-* If multiple bridges are found, you will be given the option to select one. You will have to do this every time if you have multiple bridges (for now).
+* If multiple bridges are found, you will be given the option to select one. You will have to do this the first time, the setting will be stored, will be stored as a text file.
 * If multiple entertainment areas are found, you will be given the option to select one. You can also enter this as a command line argument.
+* set up wich Hue Dim swithc you will use to contol the Lights, will be stored in a text file
 
 # Usage
 
@@ -69,6 +71,11 @@ sudo ./setup.sh
 * Type Ctrl+A and Ctrl-D to continue running the script in the background.
 * To resume the terminal session use `screen -r`
 * Press *ENTER* to safely stop the program.
+
+**Set a demon up:**
+* recomend to use PM2
+
+
 
 **Command line arguments:**
 
